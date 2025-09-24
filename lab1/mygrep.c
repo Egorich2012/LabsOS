@@ -1,6 +1,7 @@
-#ifndef MYGREP_H
-#define MYGREP_H
+#include <stdio.h>
+#include "mygrep.h"
 
-int mygrep(int argc, char *argv[]);
+int mygrep(int argc, char *argv[]) {
 
-#endif
+    return 0;
+}
