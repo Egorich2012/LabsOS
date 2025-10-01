@@ -1,20 +1,16 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -std=c99
+TARGETS = mycat mygrep
 
-TARGET_CAT = mycat
-TARGET_GREP = mygrep
+all: $(TARGETS)
 
-$(TARGET_CAT): main.c mycat.c mycat.h
-	$(CC) $(CFLAGS) -o $(TARGET_CAT) main.c mycat.c
- 
-$(TARGET_GREP): main.c mygrep.c mygrep.h
-	$(CC) $(CFLAGS) -o $(TARGET_GREP) main.c mygrep.c
+mycat: main.c mycat.c mycat.h
+	$(CC) $(CFLAGS) -DCOMPILE_CAT -o mycat main.c mycat.c
 
-all: $(TARGET_CAT) $(TARGET_GREP)
+mygrep: main.c mygrep.c mygrep.h
+	$(CC) $(CFLAGS) -DCOMPILE_GREP -o mygrep main.c mygrep.c
 
 clean:
-	rm -f $(TARGET_CAT) $(TARGET_GREP)
+	rm -f $(TARGETS)
 
-rebuild: clean all
-
-.PHONY: all clean rebuild
+.PHONY: all clean
