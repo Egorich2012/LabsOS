@@ -1,11 +1,11 @@
-CC = g++
-CFLAGS = -Wall -Wextra -std=c++17
+CC = gcc
+CFLAGS = -Wall -Wextra -std=c99
 TARGET = myls
 
 all: $(TARGET)
 
-$(TARGET): main.cpp
-	$(CC) $(CFLAGS) -o $(TARGET) main.cpp
+$(TARGET): main.c
+	$(CC) $(CFLAGS) -o $(TARGET) main.c
 
 clean:
 	rm -f $(TARGET)

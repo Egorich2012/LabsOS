@@ -1,77 +1,83 @@
-#include <iostream>
-#include <vector>
-#include <string>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 #include <dirent.h>
-#include <algorithm>
+#include <sys/stat.h>
+#include <time.h>
 
-using namespace std;
-
-// Цветовые коды
 #define COLOR_RESET "\033[0m"
 #define COLOR_BLUE "\033[34m"
 #define COLOR_GREEN "\033[32m"
 #define COLOR_CYAN "\033[36m"
 
-string get_color(const string& filename, const string& path = ".") {
-    string full_path = path + "/" + filename;
+const char* get_color(const char* filename, const char* path) {
+    char full_path[1024];
+    snprintf(full_path, sizeof(full_path), "%s/%s", path, filename);
     
-    // Упрощенная версия для Windows
-    DIR* test_dir = opendir(full_path.c_str());
+    DIR* test_dir = opendir(full_path);
     if (test_dir) {
         closedir(test_dir);
-        return COLOR_BLUE;  // Директория
+        return COLOR_BLUE;
     }
     
-    // Проверка на исполняемый файл (по расширению для простоты)
-    if (filename.find(".exe") != string::npos || 
-        filename.find(".bat") != string::npos) {
+    if (strstr(filename, ".exe") != NULL || strstr(filename, ".bat") != NULL) {
         return COLOR_GREEN;
     }
     
     return COLOR_RESET;
 }
 
+int compare_strings(const void* a, const void* b) {
+    return strcmp(*(const char**)a, *(const char**)b);
+}
+
 int main(int argc, char* argv[]) {
-    vector<string> paths;
-    bool show_all = false;
-    bool long_format = false;
+    int show_all = 0;
+    int long_format = 0;
+    char* paths[100];
+    int path_count = 0;
     
     int opt;
     while ((opt = getopt(argc, argv, "la")) != -1) {
         switch (opt) {
-            case 'l': long_format = true; break;
-            case 'a': show_all = true; break;
+            case 'l': long_format = 1; break;
+            case 'a': show_all = 1; break;
         }
     }
     
     for (int i = optind; i < argc; i++) {
-        paths.push_back(argv[i]);
+        paths[path_count++] = argv[i];
     }
-    if (paths.empty()) paths.push_back(".");
+    if (path_count == 0) {
+        paths[path_count++] = ".";
+    }
     
-    DIR* dir = opendir(paths[0].c_str());
+    DIR* dir = opendir(paths[0]);
     if (!dir) {
         perror("myls");
         return 1;
     }
     
-    vector<string> files;
+    char* files[1000];
+    int file_count = 0;
     struct dirent* entry;
-    while ((entry = readdir(dir)) != nullptr) {
-        string name = entry->d_name;
-        if (!show_all && name[0] == '.') continue;
-        files.push_back(name);
+    
+    while ((entry = readdir(dir)) != NULL && file_count < 1000) {
+        if (!show_all && entry->d_name[0] == '.') continue;
+        files[file_count] = strdup(entry->d_name);
+        file_count++;
     }
     closedir(dir);
     
-    sort(files.begin(), files.end());
+    qsort(files, file_count, sizeof(char*), compare_strings);
     
-    for (const auto& file : files) {
-        string color = get_color(file, paths[0]);
-        cout << color << file << COLOR_RESET << " ";
+    for (int i = 0; i < file_count; i++) {
+        const char* color = get_color(files[i], paths[0]);
+        printf("%s%s%s ", color, files[i], COLOR_RESET);
+        free(files[i]);
     }
-    cout << endl;
+    printf("\n");
     
     return 0;
 }
