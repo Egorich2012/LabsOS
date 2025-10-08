@@ -7,6 +7,31 @@
 
 using namespace std;
 
+// Цветовые коды
+#define COLOR_RESET "\033[0m"
+#define COLOR_BLUE "\033[34m"
+#define COLOR_GREEN "\033[32m"
+#define COLOR_CYAN "\033[36m"
+
+string get_color(const string& filename, const string& path = ".") {
+    string full_path = path + "/" + filename;
+    
+    // Упрощенная версия для Windows
+    DIR* test_dir = opendir(full_path.c_str());
+    if (test_dir) {
+        closedir(test_dir);
+        return COLOR_BLUE;  // Директория
+    }
+    
+    // Проверка на исполняемый файл (по расширению для простоты)
+    if (filename.find(".exe") != string::npos || 
+        filename.find(".bat") != string::npos) {
+        return COLOR_GREEN;
+    }
+    
+    return COLOR_RESET;
+}
+
 int main(int argc, char* argv[]) {
     vector<string> paths;
     bool show_all = false;
@@ -43,7 +68,8 @@ int main(int argc, char* argv[]) {
     sort(files.begin(), files.end());
     
     for (const auto& file : files) {
-        cout << file << " ";
+        string color = get_color(file, paths[0]);
+        cout << color << file << COLOR_RESET << " ";
     }
     cout << endl;
     
