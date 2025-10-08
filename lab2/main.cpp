@@ -25,7 +25,6 @@ int main(int argc, char* argv[]) {
     }
     if (paths.empty()) paths.push_back(".");
     
-    // Чтение директории
     DIR* dir = opendir(paths[0].c_str());
     if (!dir) {
         perror("myls");
@@ -36,15 +35,13 @@ int main(int argc, char* argv[]) {
     struct dirent* entry;
     while ((entry = readdir(dir)) != nullptr) {
         string name = entry->d_name;
-        
-        // Пропускаем скрытые файлы если нет -a
         if (!show_all && name[0] == '.') continue;
-        
         files.push_back(name);
     }
     closedir(dir);
     
-    // Вывод (пока просто список)
+    sort(files.begin(), files.end());
+    
     for (const auto& file : files) {
         cout << file << " ";
     }
