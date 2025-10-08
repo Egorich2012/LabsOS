@@ -15,17 +15,32 @@ const char* get_color(const char* filename, const char* path) {
     char full_path[1024];
     snprintf(full_path, sizeof(full_path), "%s/%s", path, filename);
     
-    DIR* test_dir = opendir(full_path);
-    if (test_dir) {
-        closedir(test_dir);
-        return COLOR_BLUE;
-    }
-    
-    if (strstr(filename, ".exe") != NULL || strstr(filename, ".bat") != NULL) {
-        return COLOR_GREEN;
+    struct stat st;
+    if (stat(full_path, &st) == 0) {
+        if (S_ISDIR(st.st_mode)) return COLOR_BLUE;
+        if (st.st_mode & S_IXUSR) return COLOR_GREEN;
     }
     
     return COLOR_RESET;
+}
+
+char* get_permissions(mode_t mode) {
+    static char permissions[11];
+    strcpy(permissions, "----------");
+    
+    if (S_ISDIR(mode)) permissions[0] = 'd';
+    
+    permissions[1] = (mode & S_IRUSR) ? 'r' : '-';
+    permissions[2] = (mode & S_IWUSR) ? 'w' : '-';
+    permissions[3] = (mode & S_IXUSR) ? 'x' : '-';
+    permissions[4] = (mode & S_IRGRP) ? 'r' : '-';
+    permissions[5] = (mode & S_IWGRP) ? 'w' : '-';
+    permissions[6] = (mode & S_IXGRP) ? 'x' : '-';
+    permissions[7] = (mode & S_IROTH) ? 'r' : '-';
+    permissions[8] = (mode & S_IWOTH) ? 'w' : '-';
+    permissions[9] = (mode & S_IXOTH) ? 'x' : '-';
+    
+    return permissions;
 }
 
 int compare_strings(const void* a, const void* b) {
@@ -43,6 +58,9 @@ int main(int argc, char* argv[]) {
         switch (opt) {
             case 'l': long_format = 1; break;
             case 'a': show_all = 1; break;
+            default:
+                fprintf(stderr, "Usage: %s [-l] [-a] [path...]\n", argv[0]);
+                return 1;
         }
     }
     
@@ -72,12 +90,30 @@ int main(int argc, char* argv[]) {
     
     qsort(files, file_count, sizeof(char*), compare_strings);
     
-    for (int i = 0; i < file_count; i++) {
-        const char* color = get_color(files[i], paths[0]);
-        printf("%s%s%s ", color, files[i], COLOR_RESET);
-        free(files[i]);
+    if (long_format) {
+        for (int i = 0; i < file_count; i++) {
+            char full_path[1024];
+            snprintf(full_path, sizeof(full_path), "%s/%s", paths[0], files[i]);
+            
+            struct stat st;
+            if (stat(full_path, &st) == 0) {
+                const char* color = get_color(files[i], paths[0]);
+                printf("%s %2d %6ld %s%s%s\n", 
+                       get_permissions(st.st_mode),
+                       (int)st.st_nlink,
+                       st.st_size,
+                       color, files[i], COLOR_RESET);
+            }
+            free(files[i]);
+        }
+    } else {
+        for (int i = 0; i < file_count; i++) {
+            const char* color = get_color(files[i], paths[0]);
+            printf("%s%s%s ", color, files[i], COLOR_RESET);
+            free(files[i]);
+        }
+        printf("\n");
     }
-    printf("\n");
     
     return 0;
 }
