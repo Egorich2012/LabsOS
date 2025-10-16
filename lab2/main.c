@@ -5,11 +5,12 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include <time.h>
+#include <sys/types.h>
+#include <getopt.h>
 
 #define COLOR_RESET "\033[0m"
 #define COLOR_BLUE "\033[34m"
 #define COLOR_GREEN "\033[32m"
-#define COLOR_CYAN "\033[36m"
 
 const char* get_color(const char* filename, const char* path) {
     char full_path[1024];
@@ -71,48 +72,63 @@ int main(int argc, char* argv[]) {
         paths[path_count++] = ".";
     }
     
-    DIR* dir = opendir(paths[0]);
-    if (!dir) {
-        perror("myls");
-        return 1;
-    }
-    
-    char* files[1000];
-    int file_count = 0;
-    struct dirent* entry;
-    
-    while ((entry = readdir(dir)) != NULL && file_count < 1000) {
-        if (!show_all && entry->d_name[0] == '.') continue;
-        files[file_count] = strdup(entry->d_name);
-        file_count++;
-    }
-    closedir(dir);
-    
-    qsort(files, file_count, sizeof(char*), compare_strings);
-    
-    if (long_format) {
-        for (int i = 0; i < file_count; i++) {
-            char full_path[1024];
-            snprintf(full_path, sizeof(full_path), "%s/%s", paths[0], files[i]);
-            
-            struct stat st;
-            if (stat(full_path, &st) == 0) {
-                const char* color = get_color(files[i], paths[0]);
-                printf("%s %2d %6ld %s%s%s\n", 
-                       get_permissions(st.st_mode),
-                       (int)st.st_nlink,
-                       st.st_size,
-                       color, files[i], COLOR_RESET);
+    for (int p = 0; p < path_count; p++) {
+        if (path_count > 1) {
+            printf("%s:\n", paths[p]);
+        }
+        
+        DIR* dir = opendir(paths[p]);
+        if (!dir) {
+            perror("myls");
+            continue;
+        }
+        
+        char* files[1000];
+        int file_count = 0;
+        struct dirent* entry;
+        
+        while ((entry = readdir(dir)) != NULL && file_count < 1000) {
+            if (!show_all && entry->d_name[0] == '.') continue;
+            files[file_count] = strdup(entry->d_name);
+            file_count++;
+        }
+        closedir(dir);
+        
+        qsort(files, file_count, sizeof(char*), compare_strings);
+        
+        if (long_format) {
+            for (int i = 0; i < file_count; i++) {
+                char full_path[1024];
+                snprintf(full_path, sizeof(full_path), "%s/%s", paths[p], files[i]);
+                
+                struct stat st;
+                if (stat(full_path, &st) == 0) {
+                    const char* color = get_color(files[i], paths[p]);
+                    char time_buf[20];
+                    struct tm* timeinfo = localtime(&st.st_mtime);
+                    strftime(time_buf, sizeof(time_buf), "%b %d %H:%M", timeinfo);
+                    
+                    printf("%s %2d %6ld %s %s%s%s\n", 
+                           get_permissions(st.st_mode),
+                           (int)st.st_nlink,
+                           st.st_size,
+                           time_buf,
+                           color, files[i], COLOR_RESET);
+                }
+                free(files[i]);
             }
-            free(files[i]);
+        } else {
+            for (int i = 0; i < file_count; i++) {
+                const char* color = get_color(files[i], paths[p]);
+                printf("%s%s%s  ", color, files[i], COLOR_RESET);
+                free(files[i]);
+            }
+            printf("\n");
         }
-    } else {
-        for (int i = 0; i < file_count; i++) {
-            const char* color = get_color(files[i], paths[0]);
-            printf("%s%s%s ", color, files[i], COLOR_RESET);
-            free(files[i]);
+        
+        if (p < path_count - 1) {
+            printf("\n");
         }
-        printf("\n");
     }
     
     return 0;
