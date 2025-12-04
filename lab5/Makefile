@@ -1,7 +1,7 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -std=c99 -O2
-TARGET = mychmod
-SOURCES = mychmod.c
+TARGET = archiver
+SOURCES = archiver.c
 
 all: $(TARGET)
 
