@@ -3,6 +3,8 @@
 #include <sys/stat.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/types.h>
+
 
 void apply_numeric_mode(const char *mode_string, const char *file_path) {
     int permission_value = strtol(mode_string, NULL, 8);
@@ -45,19 +47,19 @@ void parse_symbolic_permissions(const char *perm_string, const char *file_path) 
 
         for (int idx = 0; idx < char_index; idx++) {
             if (permission_chars[idx] == 'r') {
-                if (scope == 'u' || scope == 'a') permission_mask |= S_IRUSR;
-                if (scope == 'g' || scope == 'a') permission_mask |= S_IRGRP;
-                if (scope == 'o' || scope == 'a') permission_mask |= S_IROTH;
+                if (scope == 'u' | scope == 'a') permission_mask |= S_IRUSR;
+                if (scope == 'g' | scope == 'a') permission_mask |= S_IRGRP;
+                if (scope == 'o' | scope == 'a') permission_mask |= S_IROTH;
             }
             if (permission_chars[idx] == 'w') {
-                if (scope == 'u' || scope == 'a') permission_mask |= S_IWUSR;
-                if (scope == 'g' || scope == 'a') permission_mask |= S_IWGRP;
-                if (scope == 'o' || scope == 'a') permission_mask |= S_IWOTH;
+                if (scope == 'u' | scope == 'a') permission_mask |= S_IWUSR;
+                if (scope == 'g' | scope == 'a') permission_mask |= S_IWGRP;
+                if (scope == 'o' | scope == 'a') permission_mask |= S_IWOTH;
             }
             if (permission_chars[idx] == 'x') {
-                if (scope == 'u' || scope == 'a') permission_mask |= S_IXUSR;
-                if (scope == 'g' || scope == 'a') permission_mask |= S_IXGRP;
-                if (scope == 'o' || scope == 'a') permission_mask |= S_IXOTH;
+                if (scope == 'u' | scope == 'a') permission_mask |= S_IXUSR;
+                if (scope == 'g' | scope == 'a') permission_mask |= S_IXGRP;
+                if (scope == 'o' | scope == 'a') permission_mask |= S_IXOTH;
             }
         }
 
@@ -69,9 +71,9 @@ void parse_symbolic_permissions(const char *perm_string, const char *file_path) 
                 updated_perms &= ~permission_mask;
                 break;
             case '=':
-                if (scope == 'u' || scope == 'a') updated_perms &= ~(S_IRWXU);
-                if (scope == 'g' || scope == 'a') updated_perms &= ~(S_IRWXG);
-                if (scope == 'o' || scope == 'a') updated_perms &= ~(S_IRWXO);
+                if (scope == 'u' | scope == 'a') updated_perms &= ~(S_IRWXU);
+                if (scope == 'g' | scope == 'a') updated_perms &= ~(S_IRWXG);
+                if (scope == 'o' | scope == 'a') updated_perms &= ~(S_IRWXO);
                 updated_perms |= permission_mask;
                 break;
         }
