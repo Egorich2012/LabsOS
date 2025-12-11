@@ -1,165 +1,140 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
 #include <fcntl.h>
+#include <stdio.h>
+#include <string.h>
 #include <sys/stat.h>
-#include <utime.h>
 #include <time.h>
+#include <unistd.h>
+#include <utime.h>
 
-#define NAME_LIMIT 255
+#define BUFFER_SIZE 4096
+#define PATH_LIMIT 255
 
 typedef struct {
-    char filename[NAME_LIMIT];
-    mode_t permissions;
-    off_t filesize;
-    time_t modtime;
+    char filename[PATH_LIMIT];
+    unsigned int permissions;
+    long file_length;
+    time_t modification_time;
 } archive_entry;
 
-void print_usage_info() {
-    printf("Commands:\n");
-    printf("  ./archiver archive -a filename       Insert file\n");
-    printf("  ./archiver archive -x filename       Retrieve and delete file\n");
-    printf("  ./archiver archive -l                Display contents\n");
-    printf("  ./archiver --help                    Display this help\n");
+void display_usage() {
+    puts("Usage:");
+    puts("  ./archiver <archive> --input <file>    Insert file into archive");
+    puts("  ./archiver <archive> --extract <file>  Remove and extract file");
+    puts("  ./archiver <archive> --stat            Display archive contents");
+    puts("  ./archiver --help                      Display this message");
 }
 
-int insert_file_to_archive(const char *archive_path, const char *target_file) {
+int insert_file(const char* archive_path, const char* source_path) {
     int archive_fd, source_fd;
-    struct stat file_stat;
+    struct stat file_info;
     archive_entry entry_data;
-    char buffer_data[8192];
-    ssize_t bytes_processed;
+    char data_buffer[BUFFER_SIZE];
+    ssize_t bytes_read;
     
-    if (stat(target_file, &file_stat) != 0) {
-        perror("File check failed");
+    if (stat(source_path, &file_info) != 0) {
+        perror("Failed to get file info");
         return -1;
     }
     
-    source_fd = open(target_file, O_RDONLY);
+    source_fd = open(source_path, O_RDONLY);
     if (source_fd < 0) {
-        perror("Open source error");
+        perror("Failed to open source file");
         return -1;
     }
     
     archive_fd = open(archive_path, O_WRONLY | O_CREAT | O_APPEND, 0644);
     if (archive_fd < 0) {
-        perror("Archive open error");
+        perror("Failed to open archive");
         close(source_fd);
         return -1;
     }
     
     memset(&entry_data, 0, sizeof(entry_data));
-    strncpy(entry_data.filename, target_file, NAME_LIMIT-1);
-    entry_data.permissions = file_stat.st_mode;
-    entry_data.filesize = file_stat.st_size;
-    entry_data.modtime = file_stat.st_mtime;
+    strncpy(entry_data.filename, source_path, PATH_LIMIT - 1);
+    entry_data.permissions = file_info.st_mode;
+    entry_data.file_length = file_info.st_size;
+    entry_data.modification_time = file_info.st_mtime;
     
     if (write(archive_fd, &entry_data, sizeof(entry_data)) != sizeof(entry_data)) {
-        perror("Header write error");
+        perror("Failed to write header");
         close(archive_fd);
         close(source_fd);
         return -1;
     }
     
-    while ((bytes_processed = read(source_fd, buffer_data, sizeof(buffer_data))) > 0) {
-        if (write(archive_fd, buffer_data, bytes_processed) != bytes_processed) {
-            perror("Data write error");
+    while ((bytes_read = read(source_fd, data_buffer, BUFFER_SIZE)) > 0) {
+        if (write(archive_fd, data_buffer, bytes_read) != bytes_read) {
+            perror("Failed to write data");
             close(archive_fd);
             close(source_fd);
             return -1;
         }
     }
     
-    if (bytes_processed < 0) {
-        perror("Read error");
-    }
-    
     close(archive_fd);
     close(source_fd);
-    printf("Added: %s\n", target_file);
+    printf("Added: %s\n", source_path);
     return 0;
 }
 
-int retrieve_file_from_archive(const char *archive_path, const char *target_file) {
-    int archive_fd, dest_fd, temp_fd;
-    archive_entry entry_data;
-    char buffer_data[8192];
-    char temporary_name[] = "temp_archive_XXXXXX";
+int remove_and_extract(const char* archive_path, const char* target_filename) {
+    int archive_fd, target_fd, temp_fd;
+    archive_entry current_entry;
+    char data_buffer[BUFFER_SIZE];
+    char temp_filename[] = "temp_archive_XXXXXX";
     int file_found = 0;
-    ssize_t bytes_read;
+    ssize_t bytes_processed;
     
     archive_fd = open(archive_path, O_RDONLY);
     if (archive_fd < 0) {
-        perror("Archive open failed");
+        perror("Failed to open archive");
         return -1;
     }
     
-    temp_fd = mkstemp(temporary_name);
+    temp_fd = mkstemp(temp_filename);
     if (temp_fd < 0) {
-        perror("Temp file creation");
+        perror("Failed to create temporary file");
         close(archive_fd);
         return -1;
     }
     
-    while (read(archive_fd, &entry_data, sizeof(entry_data)) == sizeof(entry_data)) {
-        if (strcmp(entry_data.filename, target_file) == 0) {
+    while (read(archive_fd, &current_entry, sizeof(current_entry)) == sizeof(current_entry)) {
+        if (strcmp(current_entry.filename, target_filename) == 0) {
             file_found = 1;
             
-            dest_fd = open(target_file, O_WRONLY | O_CREAT | O_TRUNC, entry_data.permissions);
-            if (dest_fd < 0) {
-                perror("Destination file create");
+            target_fd = open(target_filename, O_WRONLY | O_CREAT | O_TRUNC, current_entry.permissions);
+            if (target_fd < 0) {
+                perror("Failed to create target file");
                 close(archive_fd);
                 close(temp_fd);
-                remove(temporary_name);
+                unlink(temp_filename);
                 return -1;
             }
             
-            off_t remaining = entry_data.filesize;
-            while (remaining > 0) {
-                size_t chunk = sizeof(buffer_data);
-                if (remaining < chunk) chunk = remaining;
-                
-                bytes_read = read(archive_fd, buffer_data, chunk);
-                if (bytes_read <= 0) break;
-                
-                if (write(dest_fd, buffer_data, bytes_read) != bytes_read) {
-                    perror("File write");
-                    close(dest_fd);
-                    close(archive_fd);
-                    close(temp_fd);
-                    remove(temporary_name);
-                    return -1;
-                }
-                remaining -= bytes_read;
+            for (long bytes_remaining = current_entry.file_length; bytes_remaining > 0;) {
+                bytes_processed = read(archive_fd, data_buffer, 
+                    bytes_remaining < BUFFER_SIZE ? bytes_remaining : BUFFER_SIZE);
+                if (bytes_processed <= 0) break;
+                write(target_fd, data_buffer, bytes_processed);
+                bytes_remaining -= bytes_processed;
             }
             
-            struct utimbuf time_data = {entry_data.modtime, entry_data.modtime};
-            utime(target_file, &time_data);
-            chmod(target_file, entry_data.permissions);
+            struct utimbuf time_settings = {current_entry.modification_time, current_entry.modification_time};
+            utime(target_filename, &time_settings);
+            chmod(target_filename, current_entry.permissions);
             
-            close(dest_fd);
-            printf("Restored: %s\n", target_file);
+            close(target_fd);
+            printf("Extracted: %s\n", target_filename);
             
         } else {
-            write(temp_fd, &entry_data, sizeof(entry_data));
+            write(temp_fd, &current_entry, sizeof(current_entry));
             
-            off_t remaining = entry_data.filesize;
-            while (remaining > 0) {
-                size_t chunk = sizeof(buffer_data);
-                if (remaining < chunk) chunk = remaining;
-                
-                bytes_read = read(archive_fd, buffer_data, chunk);
-                if (bytes_read <= 0) break;
-                
-                if (write(temp_fd, buffer_data, bytes_read) != bytes_read) {
-                    perror("Temp write");
-                    close(archive_fd);
-                    close(temp_fd);
-                    remove(temporary_name);
-                    return -1;
-                }
-                remaining -= bytes_read;
+            for (long bytes_remaining = current_entry.file_length; bytes_remaining > 0;) {
+                bytes_processed = read(archive_fd, data_buffer, 
+                    bytes_remaining < BUFFER_SIZE ? bytes_remaining : BUFFER_SIZE);
+                if (bytes_processed <= 0) break;
+                write(temp_fd, data_buffer, bytes_processed);
+                bytes_remaining -= bytes_processed;
             }
         }
     }
@@ -168,103 +143,96 @@ int retrieve_file_from_archive(const char *archive_path, const char *target_file
     close(temp_fd);
     
     if (!file_found) {
-        printf("Not in archive: %s\n", target_file);
-        remove(temporary_name);
+        printf("File not found: %s\n", target_filename);
+        unlink(temp_filename);
         return -1;
     }
     
-    if (rename(temporary_name, archive_path) != 0) {
-        perror("Archive replace");
-        remove(temporary_name);
+    if (rename(temp_filename, archive_path) != 0) {
+        perror("Failed to update archive");
+        unlink(temp_filename);
         return -1;
     }
     
-    printf("Removed from archive: %s\n", target_file);
+    printf("Removed from archive: %s\n", target_filename);
     return 0;
 }
 
-void list_archive_contents(const char *archive_path) {
+void display_archive_info(const char* archive_path) {
     int archive_fd;
-    archive_entry entry_data;
-    struct stat archive_stat;
+    archive_entry current_entry;
+    struct stat archive_info;
     int file_count = 0;
-    off_t total_data = 0;
+    long total_data = 0;
     
-    if (stat(archive_path, &archive_stat) != 0) {
-        perror("Archive stat");
+    if (stat(archive_path, &archive_info) != 0) {
+        perror("Failed to get archive info");
         return;
     }
     
     archive_fd = open(archive_path, O_RDONLY);
     if (archive_fd < 0) {
-        perror("Archive open");
+        perror("Failed to open archive");
         return;
     }
     
-    printf("Archive file: %s\n", archive_path);
-    printf("Total archive size: %ld bytes\n\n", archive_stat.st_size);
-    printf("%-25s %12s %12s\n", "FILENAME", "SIZE(bytes)", "PERMISSIONS");
+    printf("Archive: %s\n", archive_path);
+    printf("Archive size: %ld bytes\n\n", archive_info.st_size);
+    printf("%-25s %12s %12s\n", "FILENAME", "SIZE", "PERMISSIONS");
     
-    while (read(archive_fd, &entry_data, sizeof(entry_data)) == sizeof(entry_data)) {
+    while (read(archive_fd, &current_entry, sizeof(current_entry)) == sizeof(current_entry)) {
         file_count++;
-        total_data += entry_data.filesize;
-        printf("%-25s %12ld %12o\n", entry_data.filename, entry_data.filesize, entry_data.permissions);
-        
-        if (lseek(archive_fd, entry_data.filesize, SEEK_CUR) < 0) {
-            perror("Seek error");
-            break;
-        }
+        total_data += current_entry.file_length;
+        printf("%-25s %12ld %12o\n", current_entry.filename, 
+               current_entry.file_length, current_entry.permissions);
+        lseek(archive_fd, current_entry.file_length, SEEK_CUR);
     }
     
-    printf("\nSummary: %d files, %ld bytes of data\n", file_count, total_data);
+    printf("\nTotal files: %d, Combined data size: %ld bytes\n", file_count, total_data);
     
     close(archive_fd);
 }
 
-int process_arguments(int arg_count, char *arg_array[]) {
+int main(int arg_count, char* arg_values[]) {
     if (arg_count < 2) {
-        print_usage_info();
+        display_usage();
         return 1;
     }
     
-    if (strcmp(arg_array[1], "--help") == 0) {
-        print_usage_info();
+    if (strcmp(arg_values[1], "--help") == 0 || strcmp(arg_values[1], "-h") == 0) {
+        display_usage();
         return 0;
     }
     
     if (arg_count < 3) {
-        print_usage_info();
+        display_usage();
         return 1;
     }
     
-    char *archive_filename = arg_array[1];
-    char *operation = arg_array[2];
+    char* archive_name = arg_values[1];
+    char* operation = arg_values[2];
     
-    if (strcmp(operation, "-a") == 0) {
+    if (strcmp(operation, "--input") == 0 || strcmp(operation, "-i") == 0) {
         if (arg_count < 4) {
-            printf("Specify filename to add\n");
+            puts("Error: Missing filename argument");
             return 1;
         }
-        return insert_file_to_archive(archive_filename, arg_array[3]);
+        return insert_file(archive_name, arg_values[3]);
     }
-    else if (strcmp(operation, "-x") == 0) {
+    else if (strcmp(operation, "--extract") == 0 || strcmp(operation, "-e") == 0) {
         if (arg_count < 4) {
-            printf("Specify filename to extract\n");
+            puts("Error: Missing filename argument");
             return 1;
         }
-        return retrieve_file_from_archive(archive_filename, arg_array[3]);
+        return remove_and_extract(archive_name, arg_values[3]);
     }
-    else if (strcmp(operation, "-l") == 0) {
-        list_archive_contents(archive_filename);
+    else if (strcmp(operation, "--stat") == 0 || strcmp(operation, "-s") == 0) {
+        display_archive_info(archive_name);
         return 0;
     }
     else {
-        printf("Invalid operation\n");
-        print_usage_info();
+        puts("Error: Unknown command");
+        display_usage();
         return 1;
     }
-}
-
-int main(int arg_count, char *arg_array[]) {
-    return process_arguments(arg_count, arg_array);
 }

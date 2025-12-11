@@ -1,14 +1,11 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -std=c99 -O2
+CFLAGS = -Wall -Wextra -std=c99
 TARGET = archiver
-SOURCES = archiver.c
 
-all: $(TARGET)
-
-$(TARGET): $(SOURCES)
-  $(CC) $(CFLAGS) -o 
+$(TARGET): archiver.c
+	$(CC) $(CFLAGS) -o $(TARGET) archiver.c
 
 clean:
-  rm -f $(TARGET)
+	rm -f $(TARGET)
 
-.PHONY: all clean
+.PHONY: clean 

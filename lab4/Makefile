@@ -1,14 +1,11 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -std=c99 -O2
+CFLAGS = -Wall -Wextra -std=c99
 TARGET = mychmod
-SOURCES = mychmod.c
 
-all: $(TARGET)
-
-$(TARGET): $(SOURCES)
-  $(CC) $(CFLAGS) -o mychmod.c
+$(TARGET): mychmod.c
+	$(CC) $(CFLAGS) -o $(TARGET) mychmod.c
 
 clean:
-  rm -f $(TARGET)
+	rm -f $(TARGET)
 
-.PHONY: all clean
+.PHONY: clean 
