@@ -6,7 +6,7 @@ SOURCES = mychmod.c
 all: $(TARGET)
 
 $(TARGET): $(SOURCES)
-  $(CC) $(CFLAGS) -o 
+  $(CC) $(CFLAGS) -o mychmod.c
 
 clean:
   rm -f $(TARGET)

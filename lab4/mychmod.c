@@ -5,6 +5,9 @@
 #include <errno.h>
 
 int parse_octal(const char *mode_str, mode_t *new_mode) {
+    if (!mode_str || *mode_str == '\0') {
+        return 0;
+    }
     if (strlen(mode_str) > 4) return 0;
     char *end;
     long val = strtol(mode_str, &end, 8);
@@ -14,12 +17,16 @@ int parse_octal(const char *mode_str, mode_t *new_mode) {
 }
 
 int parse_symbolic(const char *mode_str, mode_t *new_mode, mode_t current_mode) {
+    if (!mode_str || *mode_str == '\0') {
+        return 0;
+    }
+
     mode_t result = current_mode;
     const char *p = mode_str;
-    
+
     while (*p) {
         mode_t who = 0;
-        
+
         while (*p == 'u' || *p == 'g' || *p == 'o' || *p == 'a') {
             if (*p == 'u') who |= S_IRWXU;
             if (*p == 'g') who |= S_IRWXG;
@@ -27,13 +34,21 @@ int parse_symbolic(const char *mode_str, mode_t *new_mode, mode_t current_mode) 
             if (*p == 'a') who |= (S_IRWXU | S_IRWXG | S_IRWXO);
             p++;
         }
-        
-        if (who == 0) who = S_IRWXU | S_IRWXG | S_IRWXO;
-        
-        if (*p != '+' && *p != '-' && *p != '=') return 0;
+
+        if (who == 0) {
+            who = S_IRWXU | S_IRWXG | S_IRWXO;
+        }
+
+        if (*p != '+' && *p != '-' && *p != '=') {
+            return 0;
+        }
         char op = *p;
         p++;
-        
+
+        if ((op == '+' || op == '-') && (*p == '\0' || *p == ',')) {
+            return 0;
+        }
+
         mode_t perm = 0;
         while (*p && *p != ',') {
             switch (*p) {
@@ -44,9 +59,9 @@ int parse_symbolic(const char *mode_str, mode_t *new_mode, mode_t current_mode) 
             }
             p++;
         }
-        
+
         mode_t affected = perm & who;
-        
+
         if (op == '+') {
             result |= affected;
         } else if (op == '-') {
@@ -55,10 +70,10 @@ int parse_symbolic(const char *mode_str, mode_t *new_mode, mode_t current_mode) 
             result &= ~who;
             result |= affected;
         }
-        
+
         if (*p == ',') p++;
     }
-    
+
     *new_mode = result;
     return 1;
 }
