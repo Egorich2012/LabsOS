@@ -1,118 +1,107 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/stat.h>
 #include <string.h>
-#include <unistd.h>
-#include <sys/types.h>
+#include <sys/stat.h>
+#include <errno.h>
 
-
-void apply_numeric_mode(const char *mode_string, const char *file_path) {
-    int permission_value = strtol(mode_string, NULL, 8);
-    if (chmod(file_path, permission_value) == -1) {
-        perror("Error applying permissions");
-        exit(EXIT_FAILURE);
-    }
-    printf("File %s permissions updated to %s\n", file_path, mode_string);
+int parse_octal(const char *mode_str, mode_t *new_mode) {
+    if (strlen(mode_str) > 4) return 0;
+    char *end;
+    long val = strtol(mode_str, &end, 8);
+    if (*end != '\0' || val < 0 || val > 07777) return 0;
+    *new_mode = (mode_t)val;
+    return 1;
 }
 
-void parse_symbolic_permissions(const char *perm_string, const char *file_path) {
-    struct stat file_info;
-    if (stat(file_path, &file_info) == -1) {
-        perror("Error reading file info");
-        exit(EXIT_FAILURE);
-    }
+int parse_symbolic(const char *mode_str, mode_t *new_mode, mode_t current_mode) {
+    mode_t result = current_mode;
+    const char *p = mode_str;
     
-    mode_t current_perms = file_info.st_mode;
-    mode_t updated_perms = current_perms;
-    const char *parser = perm_string;
-
-    while (*parser) {
-        char scope = *parser;
-        char operation;
-        char permission_chars[4] = {0};
-
-        if (strchr("ugoa", scope)) {
-            parser++;
-        } else {
-            break;
-        }
-        operation = *parser++;
-
-        int char_index = 0;
-        while (*parser && strchr("rwx", *parser) && char_index < 3) {
-            permission_chars[char_index++] = *parser++;
+    while (*p) {
+        mode_t who = 0;
+        
+        while (*p == 'u' || *p == 'g' || *p == 'o' || *p == 'a') {
+            if (*p == 'u') who |= S_IRWXU;
+            if (*p == 'g') who |= S_IRWXG;
+            if (*p == 'o') who |= S_IRWXO;
+            if (*p == 'a') who |= (S_IRWXU | S_IRWXG | S_IRWXO);
+            p++;
         }
         
-        mode_t permission_mask = 0;
-
-        for (int idx = 0; idx < char_index; idx++) {
-            if (permission_chars[idx] == 'r') {
-                if (scope == 'u' || scope == 'a') permission_mask |= S_IRUSR;
-                if (scope == 'g' || scope == 'a') permission_mask |= S_IRGRP;
-                if (scope == 'o' || scope == 'a') permission_mask |= S_IROTH;
+        if (who == 0) who = S_IRWXU | S_IRWXG | S_IRWXO;
+        
+        if (*p != '+' && *p != '-' && *p != '=') return 0;
+        char op = *p;
+        p++;
+        
+        mode_t perm = 0;
+        while (*p && *p != ',') {
+            switch (*p) {
+                case 'r': perm |= S_IRUSR | S_IRGRP | S_IROTH; break;
+                case 'w': perm |= S_IWUSR | S_IWGRP | S_IWOTH; break;
+                case 'x': perm |= S_IXUSR | S_IXGRP | S_IXOTH; break;
+                default: return 0;
             }
-            if (permission_chars[idx] == 'w') {
-                if (scope == 'u' || scope == 'a') permission_mask |= S_IWUSR;
-                if (scope == 'g' || scope == 'a') permission_mask |= S_IWGRP;
-                if (scope == 'o' || scope == 'a') permission_mask |= S_IWOTH;
-            }
-            if (permission_chars[idx] == 'x') {
-                if (scope == 'u' || scope == 'a') permission_mask |= S_IXUSR;
-                if (scope == 'g' || scope == 'a') permission_mask |= S_IXGRP;
-                if (scope == 'o' || scope == 'a') permission_mask |= S_IXOTH;
-            }
+            p++;
         }
-
-        switch (operation) {
-            case '+':
-                updated_perms |= permission_mask;
-                break;
-            case '-':
-                updated_perms &= ~permission_mask;
-                break;
-            case '=':
-                if (scope == 'u' || scope == 'a') updated_perms &= ~(S_IRWXU);
-                if (scope == 'g' || scope == 'a') updated_perms &= ~(S_IRWXG);
-                if (scope == 'o' || scope == 'a') updated_perms &= ~(S_IRWXO);
-                updated_perms |= permission_mask;
-                break;
+        
+        mode_t affected = perm & who;
+        
+        if (op == '+') {
+            result |= affected;
+        } else if (op == '-') {
+            result &= ~affected;
+        } else if (op == '=') {
+            result &= ~who;
+            result |= affected;
         }
+        
+        if (*p == ',') p++;
     }
     
-    if (chmod(file_path, updated_perms) == -1) {
-        perror("Error updating permissions");
-        exit(EXIT_FAILURE);
-    }
-    printf("File %s permissions updated to %s\n", file_path, perm_string);
+    *new_mode = result;
+    return 1;
 }
 
-void display_current_permissions(const char *file_path) {
-    struct stat file_info;
-    if (stat(file_path, &file_info) == -1) {
-        perror("Error reading file status");
-        return;
+int main(int argc, char *argv[]) {
+    if (argc < 3) {
+        fprintf(stderr, "Usage: %s <mode> <file>...\n", argv[0]);
+        exit(1);
     }
-    printf("Current permissions for %s: %o\n", file_path, file_info.st_mode & 0777);
-}
 
-int main(int arg_count, char *arg_values[]) {
-    if (arg_count != 3) {
-        fprintf(stderr, "Usage: %s <permissions> <filename>\n", arg_values[0]);
-        exit(EXIT_FAILURE);
+    const char *mode_str = argv[1];
+    mode_t new_mode = 0;
+    int is_octal = 1;
+
+    for (int i = 0; mode_str[i] != '\0'; i++) {
+        if (mode_str[i] < '0' || mode_str[i] > '7') {
+            is_octal = 0;
+            break;
+        }
     }
-    
-    char *permission_string = arg_values[1];
-    char *target_file = arg_values[2];
 
-    display_current_permissions(target_file);
-
-    if (permission_string[0] >= '0' && permission_string[0] <= '7') {
-        apply_numeric_mode(permission_string, target_file);
+    struct stat st;
+    if (!is_octal) {
+        if (stat(argv[2], &st) == -1) {
+            perror(argv[2]);
+            exit(1);
+        }
+        if (!parse_symbolic(mode_str, &new_mode, st.st_mode)) {
+            fprintf(stderr, "%s: Invalid mode: %s\n", argv[0], mode_str);
+            exit(1);
+        }
     } else {
-        parse_symbolic_permissions(permission_string, target_file);
+        if (!parse_octal(mode_str, &new_mode)) {
+            fprintf(stderr, "%s: Invalid mode: %s\n", argv[0], mode_str);
+            exit(1);
+        }
     }
-    
-    display_current_permissions(target_file);
-    
-    return EXIT_SUCCESS;
+
+    for (int i = 2; i < argc; i++) {
+        if (chmod(argv[i], new_mode) == -1) {
+            perror(argv[i]);
+        }
+    }
+
+    return 0;
 }
